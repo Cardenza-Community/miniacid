@@ -1,3 +1,7 @@
+#ifdef CARDENZA_TARGET
+#include "cardenza/cardenza_hal.h"
+#include "cardenza/cardenza_m5_audio.h"
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <M5Cardputer.h>
@@ -56,7 +60,30 @@ void drawUI() {
 
 void setup() {
   auto cfg = M5.config();
+#ifdef CARDENZA_TARGET
+    Serial.begin(115200);
+    const bool cardenzaCodecReady = cardenza_hal_init(32, 16);
+    cfg.fallback_board = m5::board_t::board_M5Cardputer;
+    cfg.internal_imu = false;
+#endif
   M5Cardputer.begin(cfg);
+#ifdef CARDENZA_TARGET
+    Serial.printf("[Cardenza] ES8156 %s; I2S16/32fs; no gyro/battery/WS2812; heap=%u\n",
+                  cardenzaCodecReady ? "ready" : "FAILED", ESP.getFreeHeap());
+    // Feed both ES8156 output channels. playRaw(false) mono input is duplicated by M5Unified.
+    M5Cardputer.Speaker.end();
+    auto cardenzaSpeaker = M5Cardputer.Speaker.config();
+    cardenzaSpeaker.stereo = true;
+    M5Cardputer.Speaker.config(cardenzaSpeaker);
+    if (!cardenzaCodecReady) {
+        M5Cardputer.Display.fillScreen(TFT_BLACK);
+        M5Cardputer.Display.setTextColor(TFT_RED);
+        M5Cardputer.Display.setCursor(4, 4);
+        M5Cardputer.Display.println("ES8156 INIT FAILED");
+        while (true) delay(100);
+    }
+#endif
+
 
   Serial.begin(115200);
 #if defined(MINIACID_SCENE_DEBUG)
@@ -72,7 +99,12 @@ void setup() {
   g_display.begin();
   g_display.clear(CP_BLACK);
 
-  M5Cardputer.Speaker.begin();
+
+#ifdef CARDENZA_TARGET
+    cardenza_m5_require(M5Cardputer.Speaker.begin(),"Speaker init FAILED");
+#else
+    M5Cardputer.Speaker.begin();
+#endif
   M5Cardputer.Speaker.setVolume(200); // 0-255
 
   g_miniAcid.init();
@@ -92,13 +124,24 @@ void setup() {
   g_audioRecorder = new CardputerAudioRecorder();
   g_miniDisplay->setAudioRecorder(g_audioRecorder);
 
-  xTaskCreatePinnedToCore(audioTask, "AudioTask",
+
+#ifdef CARDENZA_TARGET
+    cardenza_m5_require(xTaskCreatePinnedToCore(audioTask, "AudioTask",
+                          4096, // stack
+                          nullptr,
+                          3, // priority
+                          &g_audioTaskHandle,
+                          1 // core
+  ) == pdPASS,"Audio task init FAILED");
+#else
+    xTaskCreatePinnedToCore(audioTask, "AudioTask",
                           4096, // stack
                           nullptr,
                           3, // priority
                           &g_audioTaskHandle,
                           1 // core
   );
+#endif
 
   g_encoder8.initialize();
 
