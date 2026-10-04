@@ -1,7 +1,12 @@
 #include "UNIT_8ENCODER.h"
+#include <M5Unified.h>
 
 void UNIT_8ENCODER::writeBytes(uint8_t addr, uint8_t reg, uint8_t *buffer,
                                uint8_t length) {
+    if (M5.isCardenza()) {
+        M5.Ex_I2C.writeRegister(addr, reg, buffer, length, 100000);
+        return;
+    }
     _wire->beginTransmission(addr);
     _wire->write(reg);
     for (int i = 0; i < length; i++) {
@@ -12,6 +17,11 @@ void UNIT_8ENCODER::writeBytes(uint8_t addr, uint8_t reg, uint8_t *buffer,
 
 void UNIT_8ENCODER::readBytes(uint8_t addr, uint8_t reg, uint8_t *buffer,
                               uint8_t length) {
+    if (M5.isCardenza()) {
+        memset(buffer, 0, length);
+        M5.Ex_I2C.readRegister(addr, reg, buffer, length, 100000);
+        return;
+    }
     uint8_t index = 0;
     _wire->beginTransmission(addr);
     _wire->write(reg);
@@ -29,6 +39,8 @@ bool UNIT_8ENCODER::begin(TwoWire *wire, uint8_t addr, uint8_t sda, uint8_t scl,
     _sda   = sda;
     _scl   = scl;
     _speed = speed;
+    // Share the codec bus owned by M5Unified; never start a second Wire driver.
+    if (M5.isCardenza()) return M5.Ex_I2C.scanID(_addr, 100000);
     // _wire->begin(_sda, _scl, _speed);
     _wire->begin(_sda, _scl);
     delay(100);
@@ -132,6 +144,10 @@ void UNIT_8ENCODER::resetCounter(uint8_t index) {
 }
 
 uint8_t UNIT_8ENCODER::setI2CAddress(uint8_t addr) {
+    if (M5.isCardenza()) {
+        if (M5.Ex_I2C.writeRegister8(_addr, I2C_ADDRESS_REG, addr, 100000)) _addr = addr;
+        return _addr;
+    }
     _wire->beginTransmission(_addr);
     _wire->write(I2C_ADDRESS_REG);
     _wire->write(addr);
@@ -141,6 +157,7 @@ uint8_t UNIT_8ENCODER::setI2CAddress(uint8_t addr) {
 }
 
 uint8_t UNIT_8ENCODER::getI2CAddress(void) {
+    if (M5.isCardenza()) return M5.Ex_I2C.readRegister8(_addr, I2C_ADDRESS_REG, 100000);
     _wire->beginTransmission(_addr);
     _wire->write(I2C_ADDRESS_REG);
     _wire->endTransmission();
@@ -153,6 +170,7 @@ uint8_t UNIT_8ENCODER::getI2CAddress(void) {
 }
 
 uint8_t UNIT_8ENCODER::getFirmwareVersion(void) {
+    if (M5.isCardenza()) return M5.Ex_I2C.readRegister8(_addr, FIRMWARE_VERSION_REG, 100000);
     _wire->beginTransmission(_addr);
     _wire->write(FIRMWARE_VERSION_REG);
     _wire->endTransmission();

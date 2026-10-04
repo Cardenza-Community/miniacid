@@ -1,3 +1,4 @@
+#include "cardenza/cardenza_m5_audio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <M5Cardputer.h>
@@ -56,7 +57,13 @@ void drawUI() {
 
 void setup() {
   auto cfg = M5.config();
+    Serial.begin(115200);
   M5Cardputer.begin(cfg);
+    if (M5.isCardenza()) {
+        Serial.printf("[Cardenza] runtime ES8156 %s; heap=%u\n", M5.cardenzaCodecReady()?"ready":"FAILED", ESP.getFreeHeap());
+        cardenza_m5_require(M5.cardenzaCodecReady(), "ES8156 INIT FAILED");
+    }
+
 
   Serial.begin(115200);
 #if defined(MINIACID_SCENE_DEBUG)
@@ -72,7 +79,8 @@ void setup() {
   g_display.begin();
   g_display.clear(CP_BLACK);
 
-  M5Cardputer.Speaker.begin();
+
+    cardenza_m5_require(M5Cardputer.Speaker.begin(),"Speaker init FAILED");
   M5Cardputer.Speaker.setVolume(200); // 0-255
 
   g_miniAcid.init();
@@ -92,13 +100,14 @@ void setup() {
   g_audioRecorder = new CardputerAudioRecorder();
   g_miniDisplay->setAudioRecorder(g_audioRecorder);
 
-  xTaskCreatePinnedToCore(audioTask, "AudioTask",
+
+    cardenza_m5_require(xTaskCreatePinnedToCore(audioTask, "AudioTask",
                           4096, // stack
                           nullptr,
                           3, // priority
                           &g_audioTaskHandle,
                           1 // core
-  );
+  ) == pdPASS,"Audio task init FAILED");
 
   g_encoder8.initialize();
 
